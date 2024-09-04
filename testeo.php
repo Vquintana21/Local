@@ -34,7 +34,7 @@ function fetchCourses($apiUrl, $rut, $periodo) {
     
     // Ordenar los cursos por código
     usort($data, function($a, $b) {
-        return $a['codigo']  >= $b['codigo'];
+         return strcmp($a['codigo'], $b['codigo']);
     });
     
     return $data;
