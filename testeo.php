@@ -248,14 +248,81 @@ if (json_last_error() !== JSON_ERROR_NONE) {
             });
         }
 
-        // Renderizar actividades
-       function renderActivities() {
+        // Función para cargar actividades automáticas
+async function loadAutomaticActivities(courseId) {
+    const formData = new FormData();
+    formData.append('cursoId', courseId);
+
+    try {
+        const response = await fetch('pcl_conn.php', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.text();
+        return parseAutomaticActivities(data, courseId);
+    } catch (error) {
+        console.error('Error al cargar actividades automáticas:', error);
+        return [];
+    }
+}
+
+// Función para parsear las actividades automáticas del HTML devuelto
+function parseAutomaticActivities(html, courseId) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const activities = [];
+    doc.querySelectorAll('tbody tr').forEach((row, index) => {
+        const [_, tipoSesion, fecha, horario] = row.querySelectorAll('td');
+        activities.push({
+            id: `A${courseId}_${index}`,
+            courseId: courseId,
+            date: fecha.textContent,
+            name: tipoSesion.textContent,
+            type: 'A', // Automática
+            block: getBlockFromTime(horario.textContent),
+            idTipoAct: getTipoActFromSesion(tipoSesion.textContent)
+        });
+    });
+    return activities;
+}
+
+// Función para obtener el bloque horario basado en la hora
+function getBlockFromTime(timeString) {
+    const [start, _] = timeString.split(' - ');
+    const hour = parseInt(start.split(':')[0]);
+    if (hour < 10) return '1';
+    if (hour < 12) return '2';
+    if (hour < 14) return '3';
+    if (hour < 16) return '4';
+    return '5';
+}
+
+// Función para obtener el tipo de actividad basado en el tipo de sesión
+function getTipoActFromSesion(tipoSesion) {
+    switch (tipoSesion) {
+        case 'Actividad Grupal': return '21';
+        case 'Trabajo Práctico': return '21';
+        case 'Evaluación': return '22';
+        case 'Examen': return '22';
+        default: return '20';
+    }
+}
+
+// Modificar la función renderActivities para incluir actividades automáticas
+async function renderActivities() {
     const activityList = document.getElementById('activityList');
-    const currentDate = getCurrentDate();
+
+    // Cargar actividades automáticas para todos los cursos seleccionados
+    for (const courseId of selectedCourses) {
+        const automaticActivities = await loadAutomaticActivities(courseId);
+        activitiesData = activitiesData.filter(a => a.courseId !== courseId); // Eliminar actividades anteriores del mismo curso
+        activitiesData = [...activitiesData, ...automaticActivities];
+    }
+
     activityList.innerHTML = selectedCourses.map(courseId => {
         const course = coursesData.find(c => c.codigo === courseId);
         const activities = [
-            ...activitiesData.filter(a => a.courseId === courseId && a.date <= currentDate),
+            ...activitiesData.filter(a => a.courseId === courseId),
             ...manualActivities.filter(a => a.courseId === courseId)
         ];
         return `
@@ -264,14 +331,18 @@ if (json_last_error() !== JSON_ERROR_NONE) {
                 <div class="card-body">
                     <ul class="list-group">
                         ${activities.map(activity => `
-                            <li class="list-group-item">
+                            <li class="list-group-item ${activity.type === 'A' ? 'bg-info bg-opacity-10' : 'bg-secondary bg-opacity-10'}">
                                 <div class="form-check">
                                     <input class="form-check-input activity-checkbox" type="checkbox" 
                                         value="${activity.id}" id="activity${activity.id}"
                                         ${selectedActivities.some(a => a.courseId === courseId && a.activityId === activity.id) ? 'checked' : ''}>
                                     <label class="form-check-label" for="activity${activity.id}">
                                         ${formatActivityDate(activity)}
-                                        ${activity.name}<br>
+                                        ${activity.name}
+                                        <span class="badge ${activity.type === 'A' ? 'bg-info' : 'bg-secondary'} ms-2">
+                                            <small><strong>${activity.type === 'A' ? 'AUTO' : 'MANUAL'}</strong></small>
+                                        </span>
+                                        <br>
                                         <small class="text-muted">${blockTimes[activity.block]}</small>
                                     </label>
                                 </div>
